@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Air Quality Index Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+        /* Custom styles for the SVG gauge visualization */
+        .gauge-background {
+            stroke-width: 20;
+            fill: none;
+            stroke: #e0e0e0;
+        }
+        .gauge-fill {
+            stroke-width: 20;
+            fill: none;
+            transition: stroke-dashoffset 1s ease-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        /* Sparkline container styling */
+        .sparkline-container {
+            width: 100%;
+            height: 80px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+            Air Quality Index (AQI) Tracker
+        </h1>
+        
+        <!-- Search and Geolocation Controls -->
+        <div class="flex flex-col sm:flex-row gap-3 mb-8">
+            <input type="text" id="city-input" placeholder="Enter city name (e.g., London, Tokyo)"
+                class="flex-grow p-3 border border-gray-300 rounded-xl shadow-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                autocomplete="off">
+            
+            <button id="search-button"
+                class="flex items-center justify-center gap-2 p-3 bg-blue-600 text-white font-semibold rounded-xl shadow-md hover:bg-blue-700 transition duration-300 transform hover:scale-[1.01]">
+                <span data-lucide="search" size="20"></span> Search
+            </button>
+            
+            <button id="geo-button"
+                class="flex items-center justify-center gap-2 p-3 bg-gray-700 text-white font-semibold rounded-xl shadow-md hover:bg-gray-800 transition duration-300 transform hover:scale-[1.01]">
+                <span data-lucide="map-pin" size="20"></span> My Location
+            </button>
+        </div>
+
+        <!-- Status Message Area -->
+        <div id="status-message" class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow-inner mb-8">
+            <p>Enter a city name or use "My Location" to fetch air quality data.</p>
+        </div>
+        
+        <!-- Main AQI Card (Hidden until data loads) -->
+        <div id="aqi-card" class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 hidden transition-opacity duration-500">
+            
+            <div class="flex justify-between items-start mb-6 border-b pb-4">
+                <div>
+                    <h2 id="location-name" class="text-4xl font-extrabold text-gray-900 mb-1">Location Name</h2>
+                    <p id="last-updated" class="text-sm text-gray-500">Last updated: -</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm font-medium text-gray-600">Primary Pollutant:</p>
+                    <p id="primary-pollutant" class="text-xl font-bold text-gray-800">PM2.5</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col lg:flex-row gap-8">
+                
+                <!-- 1. AQI Gauge and Summary -->
+                <div class="lg:w-1/3 flex flex-col items-center justify-center bg-gray-50 p-6 rounded-xl shadow-inner">
+                    <div class="relative w-48 h-48">
+                        <svg id="aqi-gauge" viewBox="0 0 100 100" class="w-full h-full">
+                            <!-- Background Arc -->
+                            <path class="gauge-background" d="M 10 50 A 40 40 0 1 1 90 50" />
+                            <!-- Fill Arc (Dynamic) -->
+                            <path id="gauge-fill" class="gauge-fill" d="M 10 50 A 40 40 0 1 1 90 50" style="stroke-dasharray: 125.6; stroke-dashoffset: 125.6;" />
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                            <p id="aqi-value" class="text-5xl font-extrabold text-gray-900">--</p>
+                            <p id="aqi-status" class="text-xl font-bold mt-1 uppercase tracking-wider">Loading</p>
+                            <p class="text-xs text-gray-500 mt-1">PM2.5 $\mu g/m^3$</p>
+                        </div>
+                    </div>
+                    <p id="aqi-recommendation" class="text-center text-sm mt-4 p-3 rounded-lg"></p>
+                </div>
+
+                <!-- 2. Pollutant Breakdown -->
+                <div class="lg:w-2/3">
+                    <h3 class="text-xl font-bold mb-4 border-b pb-2 text-gray-800">Pollutant Breakdown</h3>
+                    <div id="pollutant-breakdown" class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <!-- Pollutant cards injected here -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 3. History Sparkline -->
+            <div class="mt-8 pt-6 border-t">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">24-Hour PM2.5 History</h3>
+                <div id="sparkline-chart" class="sparkline-container">
+                    <svg id="sparkline-svg" viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full">
+                        <polyline id="sparkline-line" fill="none" stroke="#4c7cff" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                        <polyline id="sparkline-area" fill="rgba(76, 124, 255, 0.2)" vector-effect="non-scaling-stroke"/>
+                    </svg>
+                    <div id="sparkline-message" class="text-center text-sm text-gray-500 mt-2">Loading historical data...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module">
+        // --- Core Setup ---
+        const OPENAQ_BASE_URL = 'https://api.openaq.org/v2/';
+        const MAX_AQI_VALUE = 200; // Cap for visual scale (PM2.5 at ~150 is Hazardous, so 200 gives context)
+
+        // DOM Elements
+        const aqiCard = document.getElementById('aqi-card');
+        const statusMessage = document.getElementById('status-message');
+        const cityInput = document.getElementById('city-input');
+        const searchButton = document.getElementById('search-button');
+        const geoButton = document.getElementById('geo-button');
+        
+        // AQI Card Elements
+        const locationNameEl = document.getElementById('location-name');
+        const lastUpdatedEl = document.getElementById('last-updated');
+        const aqiValueEl = document.getElementById('aqi-value');
+        const aqiStatusEl = document.getElementById('aqi-status');
+        const aqiRecommendationEl = document.getElementById('aqi-recommendation');
+        const pollutantBreakdownEl = document.getElementById('pollutant-breakdown');
+        
+        // Gauge Elements
+        const gaugeFill = document.getElementById('gauge-fill');
+        const gaugeRadius = 40;
+        const gaugeCircumference = 2 * Math.PI * gaugeRadius; // ~251.3
+        
+        // Sparkline Elements
+        const sparklineLine = document.getElementById('sparkline-line');
+        const sparklineArea = document.getElementById('sparkline-area');
+        const sparklineMessage = document.getElementById('sparkline-message');
+
+
+        // --- AQI Scale and Color Mapping (Simplified PM2.5 $\mu g/m^3$) ---
+        const AQI_SCALE = [
+            { limit: 0, status: 'Good', color: '#10b981', recommendation: 'Air quality is satisfactory. Enjoy the outdoors.', tailwindBg: 'bg-green-100', tailwindText: 'text-green-700' },
+            { limit: 12.1, status: 'Moderate', color: '#f59e0b', recommendation: 'Sensitive individuals should consider limiting prolonged outdoor exertion.', tailwindBg: 'bg-yellow-100', tailwindText: 'text-yellow-700' },
+            { limit: 35.5, status: 'Unhealthy for Sensitive Groups', color: '#f97316', recommendation: 'People with respiratory disease should limit outdoor activity.', tailwindBg: 'bg-orange-100', tailwindText: 'text-orange-700' },
+            { limit: 55.5, status: 'Unhealthy', color: '#ef4444', recommendation: 'Everyone may begin to experience health effects. Limit outdoor exertion.', tailwindBg: 'bg-red-100', tailwindText: 'text-red-700' },
+            { limit: 150.5, status: 'Very Unhealthy', color: '#8b5cf6', recommendation: 'Health alert: everyone may experience more serious health effects. Avoid all outdoor activity.', tailwindBg: 'bg-purple-100', tailwindText: 'text-purple-700' },
+            { limit: 250.5, status: 'Hazardous', color: '#6b7280', recommendation: 'Emergency conditions. Everyone should remain indoors.', tailwindBg: 'bg-gray-200', tailwindText: 'text-gray-800' },
+        ];
+
+        /**
+         * Determines AQI status, color, and recommendation based on PM2.5 concentration.
+         * @param {number} concentration PM2.5 value in $\mu g/m^3$.
+         */
+        const getAqiStatus = (concentration) => {
+            for (let i = AQI_SCALE.length - 1; i >= 0; i--) {
+                if (concentration >= AQI_SCALE[i].limit) {
+                    return AQI_SCALE[i];
+                }
+            }
+            return AQI_SCALE[0]; // Default to Good
+        };
+
+        // --- Utility Functions ---
+
+        /**
+         * Formats the date string.
+         * @param {string} dateString
+         */
+        const formatDate = (dateString) => {
+            return new Date(dateString).toLocaleString('en-US', {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            });
+        };
+
+        /**
+         * Displays a temporary message in the status area.
+         * @param {string} message 
+         * @param {string} type 'success' or 'error'
+         */
+        const displayStatus = (message, type = 'info') => {
+            const colors = {
+                info: 'bg-blue-100 border-blue-500 text-blue-700',
+                error: 'bg-red-100 border-red-500 text-red-700',
+                success: 'bg-green-100 border-green-500 text-green-700'
+            };
+            statusMessage.className = `p-4 rounded-lg shadow-inner mb-8 border-l-4 ${colors[type]}`;
+            statusMessage.innerHTML = `<p>${message}</p>`;
+        };
+
+        // --- API & Fetching Logic ---
+
+        /**
+         * 1. Fetches a location's coordinates/ID from a city search.
+         * @param {string} query City name or location string.
+         * @returns {object} Coordinates and name of the location.
+         */
+        const fetchLocationCoordinates = async (query) => {
+            const url = `${OPENAQ_BASE_URL}locations?limit=1&page=1&query=${encodeURIComponent(query)}&orderBy=count&sort=desc`;
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error('Failed to connect to OpenAQ API.');
+            }
+            
+            const data = await response.json();
+            
+            if (data.results.length === 0) {
+                throw new Error(`No locations found for "${query}".`);
+            }
+
+            const location = data.results[0];
+            return {
+                name: location.name,
+                lat: location.coordinates.latitude,
+                lon: location.coordinates.longitude,
+            };
+        };
+
+        /**
+         * 2. Fetches the latest measurements for a given coordinate.
+         * @param {number} lat Latitude.
+         * @param {number} lon Longitude.
+         */
+        const fetchLatestMeasurements = async (lat, lon) => {
+            // Find the closest monitor to the coordinates
+            const url = `${OPENAQ_BASE_URL}latest?limit=100&page=1&coordinates=${lat},${lon}&radius=10000`; // 10km radius
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch latest measurements.');
+            }
+            
+            const data = await response.json();
+            
+            if (data.results.length === 0 || !data.results[0].measurements) {
+                throw new Error('No recent air quality data available nearby.');
+            }
+            
+            return data.results[0];
+        };
+
+        /**
+         * 3. Fetches the last 24 hours of PM2.5 data for the sparkline.
+         * @param {number} lat Latitude.
+         * @param {number} lon Longitude.
+         */
+        const fetchHistoryData = async (lat, lon) => {
+            const now = new Date();
+            const oneDayAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+            
+            const url = `${OPENAQ_BASE_URL}measurements?limit=100&page=1&coordinates=${lat},${lon}&radius=5000&date_from=${oneDayAgo.toISOString()}&parameter=pm25&orderBy=datetime&sort=asc`;
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch history data.');
+            }
+
+            const data = await response.json();
+            
+            return data.results;
+        };
+
+
+        /**
+         * Main function to coordinate data fetching and rendering.
+         * @param {string} query City name.
+         * @param {number} lat Latitude (optional).
+         * @param {number} lon Longitude (optional).
+         */
+        const loadAirQualityData = async (query, lat = null, lon = null) => {
+            aqiCard.classList.add('hidden');
+            displayStatus(`Searching for air quality data in ${query || 'your location'}...`);
+
+            try {
+                let location;
+                if (lat && lon) {
+                    location = { name: 'Your Current Location', lat, lon };
+                } else {
+                    location = await fetchLocationCoordinates(query);
+                }
+
+                const [latestData, historyData] = await Promise.all([
+                    fetchLatestMeasurements(location.lat, location.lon),
+                    fetchHistoryData(location.lat, location.lon)
+                ]);
+
+                displayStatus('Data loaded successfully!', 'success');
+                renderDashboard(location.name, latestData, historyData);
+
+            } catch (error) {
+                console.error("AQI Load Error:", error);
+                displayStatus(`Error loading data: ${error.message}`, 'error');
+                aqiCard.classList.add('hidden');
+            }
+        };
+
+        // --- Rendering Functions ---
+
+        /**
+         * Updates the SVG gauge visualization.
+         * @param {number} value The concentration value (PM2.5).
+         * @param {object} status The AQI status object.
+         */
+        const updateGauge = (value, status) => {
+            // Cap value to MAX_AQI_VALUE for visual consistency
+            const normalizedValue = Math.min(value, MAX_AQI_VALUE);
+            
+            // Calculate the percentage of the max value
+            const percentage = normalizedValue / MAX_AQI_VALUE;
+            
+            // The gauge arc is roughly half a circle, so the circumference is ~125.6 (using radius 40)
+            const arcLength = gaugeCircumference / 2;
+            
+            // Set the dash array to the full length of the arc
+            gaugeFill.style.strokeDasharray = `${arcLength}`;
+
+            // Calculate the dash offset (how much of the arc is visible)
+            // Offset = (1 - percentage) * arcLength
+            const offset = arcLength - (percentage * arcLength);
+
+            gaugeFill.style.stroke = status.color;
+            gaugeFill.style.strokeDashoffset = offset;
+            
+            aqiValueEl.textContent = value.toFixed(1);
+            aqiStatusEl.textContent = status.status;
+            aqiStatusEl.style.color = status.color;
+            
+            aqiRecommendationEl.textContent = status.recommendation;
+            aqiRecommendationEl.className = `text-center text-sm mt-4 p-3 rounded-xl font-medium ${status.tailwindBg} ${status.tailwindText}`;
+        };
+
+        /**
+         * Renders the pollutant breakdown cards.
+         * @param {array} measurements Array of all pollutant measurements.
+         */
+        const renderPollutantBreakdown = (measurements) => {
+            pollutantBreakdownEl.innerHTML = ''; // Clear previous content
+
+            // Sort and filter measurements
+            const validMeasurements = measurements
+                .filter(m => m.value !== null && m.parameter !== 'bc' && m.parameter !== 'co') // Exclude less common params
+                .sort((a, b) => {
+                    // Prioritize PM values first
+                    if (a.parameter.startsWith('pm') && !b.parameter.startsWith('pm')) return -1;
+                    if (!a.parameter.startsWith('pm') && b.parameter.startsWith('pm')) return 1;
+                    return 0;
+                })
+                .slice(0, 6); // Limit to 6 clearest pollutants
+
+            validMeasurements.forEach(m => {
+                const iconMap = {
+                    'pm25': 'cloud-drizzle',
+                    'pm10': 'cloud-rain',
+                    'o3': 'sun',
+                    'no2': 'activity',
+                    'so2': 'zap',
+                    'co': 'shield-off',
+                };
+                
+                const card = `
+                    <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 flex flex-col items-center text-center">
+                        <span data-lucide="${iconMap[m.parameter] || 'gauge'}" size="24" class="text-blue-500 mb-2"></span>
+                        <p class="text-2xl font-bold text-gray-900">${m.value.toFixed(1)}</p>
+                        <p class="text-xs font-semibold uppercase text-gray-600">${m.parameter}</p>
+                        <p class="text-xs text-gray-400">${m.unit}</p>
+                    </div>
+                `;
+                pollutantBreakdownEl.insertAdjacentHTML('beforeend', card);
+            });
+            lucide.createIcons(); // Initialize icons for new elements
+        };
+
+        /**
+         * Renders the 24-hour history sparkline.
+         * @param {array} historyData Array of historical measurements.
+         */
+        const renderSparkline = (historyData) => {
+            if (historyData.length < 2) {
+                sparklineMessage.textContent = 'Insufficient data points for a 24-hour history sparkline.';
+                sparklineLine.setAttribute('points', '');
+                sparklineArea.setAttribute('points', '');
+                return;
+            }
+
+            sparklineMessage.textContent = '';
+            
+            const values = historyData.map(d => d.value);
+            const maxVal = Math.max(...values);
+            const minVal = Math.min(...values);
+            const range = maxVal - minVal;
+
+            const normalize = (value) => {
+                // Map value to a 0-100 vertical scale (0 is top, 100 is bottom)
+                if (range === 0) return 50;
+                return 100 - ((value - minVal) / range) * 90 + 5; // Use 90 range (5-95) for padding
+            };
+
+            const points = historyData.map((d, i) => {
+                const x = (i / (historyData.length - 1)) * 100;
+                const y = normalize(d.value);
+                return `${x},${y}`;
+            }).join(' ');
+
+            // Create points for the area fill (closing the polygon)
+            const areaPoints = `0,100 ${points} 100,100`;
+
+            sparklineLine.setAttribute('points', points);
+            sparklineArea.setAttribute('points', areaPoints);
+        };
+        
+        /**
+         * Aggregates and displays all components on the dashboard.
+         */
+        const renderDashboard = (location, latestData, historyData) => {
+            const pm25 = latestData.measurements.find(m => m.parameter === 'pm25');
+            
+            if (!pm25) {
+                throw new Error('PM2.5 data (primary AQI pollutant) is missing for this location.');
+            }
+
+            const pm25Value = pm25.value;
+            const aqiStatus = getAqiStatus(pm25Value);
+
+            locationNameEl.textContent = location;
+            lastUpdatedEl.textContent = `Last updated: ${formatDate(latestData.measurements[0].date.utc)}`;
+            
+            updateGauge(pm25Value, aqiStatus);
+            renderPollutantBreakdown(latestData.measurements);
+            renderSparkline(historyData);
+            
+            aqiCard.classList.remove('hidden');
+            aqiCard.style.opacity = '1';
+        };
+
+        // --- Event Handlers ---
+
+        /**
+         * Handles search button click or Enter key press.
+         */
+        const handleSearch = () => {
+            const query = cityInput.value.trim();
+            if (query) {
+                loadAirQualityData(query);
+            } else {
+                displayStatus('Please enter a city name to search.', 'info');
+            }
+        };
+
+        /**
+         * Handles geolocation request.
+         */
+        const handleGeolocation = () => {
+            if (navigator.geolocation) {
+                displayStatus('Fetching your location...');
+                geoButton.disabled = true; // Disable button during fetch
+                searchButton.disabled = true;
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        geoButton.disabled = false; // Re-enable
+                        searchButton.disabled = false;
+                        const { latitude, longitude } = position.coords;
+                        loadAirQualityData(null, latitude, longitude);
+                    },
+                    (error) => {
+                        geoButton.disabled = false; // Re-enable
+                        searchButton.disabled = false;
+                        console.error("Geolocation Error:", error);
+                        
+                        let errorMessage = error.message || 'An unknown geolocation error occurred.';
+
+                        // Map error codes to more friendly messages
+                        if (error.code === 1) {
+                            errorMessage = 'Permission denied. Please allow location access in your browser settings to use this feature.';
+                        } else if (error.code === 2) {
+                            errorMessage = 'Position unavailable. Your device could not determine your location.';
+                        } else if (error.code === 3) {
+                            errorMessage = 'Timeout reached. Location request took too long.';
+                        }
+
+                        displayStatus(`Geolocation failed: ${errorMessage}. Please try searching by city name.`, 'error');
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } else {
+                displayStatus('Geolocation is not supported by your browser.', 'error');
+            }
+        };
+
+        // --- Initialization ---
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            searchButton.addEventListener('click', handleSearch);
+            geoButton.addEventListener('click', handleGeolocation);
+            cityInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    handleSearch();
+                }
+            });
+            lucide.createIcons(); // Initialize icons
+        });
+
+    </script>
+</body>
+</html>
